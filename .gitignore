@@ -1,0 +1,9 @@
+node_modules/
+backend/build/
+.env
+backend/src/keys/*
+backend/coverage/
+
+frontend/build/
+.DS_Store
+backend/.DS_Store
