@@ -1,92 +1,89 @@
+import * as userServices from '../services/users/usersServices';
+import { Request, Response } from 'express';
+import { decodeToken } from '../utils/jwt.utils';
+import { validateUserData } from '../utils/validation';
 
-import * as userServices from '../services/users/usersServices'
-import { Request, Response } from 'express'
-import toNewUserEntry from '../services/users/userUtils'
-import { decodeToken } from '../utils/jwt.utils'
-
-export function getUsers(_req: Request, res: Response): void {
-  userServices.getUsers().then((users) => {
-    console.log('Result from service: ')
-    console.log(users)
-    return (users != null) ? res.send(users) : res.sendStatus(404)
-  }).catch((e: any) => {
-    console.log(e)
-    throw new Error(e)
-  })
-}
-
-export async function register(req: Request, res: Response): Promise<void> {
+/**
+ * Handles user registration with validation.
+ */
+export async function register(req: Request, res: Response): Promise<Response> {
   try {
-    userServices.findByEmail(req.body.email).then(async (user) => {
-      if (user !== null) {
-        return res.status(409).send('Email Already in use')
-      } else {
-        return await toNewUserEntry(req.body).then((parsedUserEntry) => {
-          userServices.register(parsedUserEntry).then((user) => {
-            console.log('Result from added new entry: ')
-            console.log(user)
-            console.log('New User to register')
-            console.log(parsedUserEntry)
-            return (user != null) ? res.send(user) : res.sendStatus(201)
-          }).catch((e: any) => {
-            console.log(e)
-            throw new Error(e)
-          })
-        }).catch((e: any) => {
-          console.log(e)
-          throw new Error(e)
-        })
-      }
-    }).catch((e: any) => {
-      console.log(e)
-      throw new Error(e)
-    })
-  } catch (e: any) {
-    res.status(400).send(e.message)
-  }
-}
-
-export async function login(req: Request, res: Response): Promise<void> {
-  try {
-    if (req.body.email !== undefined && req.body.password !== undefined) {
-      userServices.login(req.body.email, req.body.password).then((token) => {
-        let user = {}
-        if (token) {
-          const decodedToken = decodeToken(token)
-          user = { name: decodedToken.name, email: decodedToken.email, id: decodedToken.id }
-        }
-        return (token != null) ? res.send({ token, user }) : res.sendStatus(401)
-      }).catch((e: any) => {
-        console.log(e)
-        throw new Error(e)
-      })
-    } else {
-      res.status(401).send({ error: 'Invalid Credentials' })
+    // Validate request data
+    const validation = validateUserData(req.body);
+    if (!validation.valid) {
+      return res.status(400).json({ status: "error", errors: validation.errors });
     }
-  } catch (e: any) {
-    res.status(400).send(e.message)
+
+    const existingUser = await userServices.findByEmail(req.body.email);
+    if (existingUser) {
+      return res.status(409).json({ status: "error", message: "Email already in use" });
+    }
+
+    const newUser = await userServices.register(req.body);
+    return res.status(201).json({ status: "success", user: newUser });
+  } catch (error: any) {
+    console.error(error);
+    return res.status(500).json({ status: "error", message: "Internal server error" });
   }
 }
 
-export async function me(req: Request, res: Response): Promise<void> {
+/**
+ * Handles user login with validation.
+ */
+export async function login(req: Request, res: Response): Promise<Response> {
   try {
-    let token: string = req.headers.authorization as string
+    if (!req.body.email || !req.body.password) {
+      return res.status(400).json({ status: "error", message: "Email and password are required" });
+    }
+
+    const token = await userServices.login(req.body.email, req.body.password);
+    if (!token) {
+      return res.status(401).json({ status: "error", message: "Invalid credentials" });
+    }
+
+    const decodedToken = decodeToken(token);
+    return res.json({ status: "success", token, user: decodedToken });
+  } catch (error: any) {
+    console.error(error);
+    return res.status(500).json({ status: "error", message: "Internal server error" });
+  }
+}
+
+/**
+ * Handles fetching authenticated user information.
+ */
+export async function me(req: Request, res: Response): Promise<Response> {
+  try {
+    let token: string = req.headers.authorization as string;
     if (token.toLowerCase().startsWith('bearer')) {
-      token = token.slice('bearer'.length).trim()
+      token = token.slice('bearer'.length).trim();
     }
 
-    const decodedToken = decodeToken(token)
+    const decodedToken = decodeToken(token);
     if (typeof decodedToken.userId === 'number') {
-      userServices.findMeByUserId(decodedToken.userId).then((user) => {
-        return (user != null) ? res.send(user) : res.sendStatus(201)
-      }).catch((e: any) => {
-        console.log(e)
-        throw new Error(e)
-      })
+      const user = await userServices.findMeByUserId(decodedToken.userId);
+      if (!user) {
+        return res.status(404).json({ status: "error", message: "User not found" });
+      }
+      return res.json({ status: "success", user });
     } else {
-      res.status(500).send()
+      return res.status(500).json({ status: "error", message: "Invalid token" });
     }
-  } catch (e: any) {
-    res.status(400).send(e.message)
+  } catch (error: any) {
+    console.error(error);
+    return res.status(400).json({ status: "error", message: error.message });
+  }
+}
+
+/**
+ * Fetch all users.
+ */
+export async function getUsers(_req: Request, res: Response): Promise<Response> {
+  try {
+    const users = await userServices.getUsers();
+    return users ? res.json({ status: "success", users }) : res.status(404).json({ status: "error", message: "No users found" });
+  } catch (error: any) {
+    console.error(error);
+    return res.status(500).json({ status: "error", message: "Internal server error" });
   }
 }

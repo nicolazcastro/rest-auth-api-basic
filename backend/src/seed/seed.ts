@@ -1,12 +1,11 @@
 import { Seeder } from 'mongo-seeding'
 import bcrypt from 'bcrypt'
-import * as diaryServices from '../services/diaries/diariesServices'
 import * as userServices from '../services/users/usersServices'
 import path from 'path'
 
 const config = {
   database: {
-    name: 'diarydb'
+    name: 'authapi'
   },
   dropDatabase: true
 }
@@ -37,11 +36,6 @@ seeder
       await userServices.setUserPassword(element.id, await bcrypt.hash(element.password, salt))
     }
 
-    const diaries = await diaryServices.getEntries()
-    for (const diary of diaries) {
-      console.log('Result from diaries service: ', diary)
-      await diaryServices.setDiaryUser(diary)
-    }
     process.exit(0)
   })
   .catch(err => {

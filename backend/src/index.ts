@@ -1,6 +1,5 @@
 import express from 'express'
 import cors from 'cors';
-import diaryRouter from './routes/diaries'
 import userRouter from './routes/users'
 import { generateToken } from './utils/jwt.utils'
 import { TokenPayload } from './types/types'
@@ -29,7 +28,6 @@ app.get('/ping', (_req, res) => {
   res.send('pong')
 })
 
-app.use('/api/v1/diaries', diaryRouter)
 app.use('/api/v1/user', userRouter)
 
 app.listen(PORT, () => {

@@ -44,7 +44,6 @@ const isPassword = (string: string): boolean => {
     minUppercase: 1,
     minNumbers: 0,
     minSymbols: 0,
-    returnScore: false,
     pointsPerUnique: 1,
     pointsPerRepeat: 0.5,
     pointsForContainingLower: 10,

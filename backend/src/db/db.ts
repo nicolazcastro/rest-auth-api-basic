@@ -1,6 +1,5 @@
 import dotenv from 'dotenv'
 import { connect, model, disconnect, Types, connection } from 'mongoose'
-import * as DiaryModel from '../models/diary'
 import * as UserModel from '../models/user'
 
 dotenv.config()
@@ -17,10 +16,6 @@ export async function disconnectDb(): Promise<void> {
 
 export function getUserModel(): any {
   return model<UserModel.IUser>('users', UserModel.UserSchema)
-}
-
-export function getDiaryModel(): any {
-  return model<DiaryModel.IDiaryEntry>('diaries', DiaryModel.DiarySchema)
 }
 
 export function getNewObjectId(): any {
