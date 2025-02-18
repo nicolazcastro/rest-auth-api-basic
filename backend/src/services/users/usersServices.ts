@@ -146,12 +146,16 @@ export async function findById(id: string): Promise<IUser | any> {
 
 export async function register(parsedUserEntry: INewUserEntry): Promise<IUser | any> {
   await db.connectDb()
+
+  const salt = await bcrypt.genSalt(6)
+  let hashedPassord = await bcrypt.hash(parsedUserEntry.password, salt)
+
   const newUserEntry: INewUserEntry = new User({
     name: parsedUserEntry.name,
     email: parsedUserEntry.email,
     userId: parsedUserEntry.userId,
     enabled: true,
-    password: parsedUserEntry.password,
+    password: hashedPassord,
     profile: parsedUserEntry.profile
   })
   return await newUserEntry.save().then(() => {

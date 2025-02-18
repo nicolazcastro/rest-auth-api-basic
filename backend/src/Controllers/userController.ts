@@ -1,14 +1,16 @@
 import * as userServices from '../services/users/usersServices';
 import { Request, Response } from 'express';
-import { decodeToken } from '../utils/jwt.utils';
+import { decodeToken, generateToken } from '../utils/jwt.utils';
 import { validateUserData } from '../utils/validation';
+import { AccessTypes, AdminAccessTypes } from '../models/enums';
 
 /**
  * Handles user registration with validation.
+ * If registration is successful, a token is generated and returned along with the user data.
  */
 export async function register(req: Request, res: Response): Promise<Response> {
   try {
-    // Validate request data
+    // Validate the request data
     const validation = validateUserData(req.body);
     if (!validation.valid) {
       return res.status(400).json({ status: "error", errors: validation.errors });
@@ -19,8 +21,33 @@ export async function register(req: Request, res: Response): Promise<Response> {
       return res.status(409).json({ status: "error", message: "Email already in use" });
     }
 
+    req.body.userId = await userServices.getNextUserId();
+
+    // Register the new user
     const newUser = await userServices.register(req.body);
-    return res.status(201).json({ status: "success", user: newUser });
+
+    // Determine access types based on the user's profile.
+    // Since the enums are numeric enums, we extract only the string keys.
+    let accessTypes: string[] = [];
+    if (newUser.profile === 'admin') {
+      accessTypes = Object.keys(AdminAccessTypes).filter(key => isNaN(Number(key)));
+    } else {
+      accessTypes = Object.keys(AccessTypes).filter(key => isNaN(Number(key)));
+    }
+
+    // Create the token payload
+    const tokenPayload = {
+      name: newUser.name,
+      email: newUser.email,
+      userId: newUser.userId,
+      accessTypes
+    };
+
+    // Generate the token using the generateToken utility
+    const token = generateToken(tokenPayload);
+
+    // Return the response with token and user data
+    return res.status(201).json({ status: "success", token, user: tokenPayload });
   } catch (error: any) {
     console.error(error);
     return res.status(500).json({ status: "error", message: "Internal server error" });
