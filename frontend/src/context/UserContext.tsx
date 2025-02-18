@@ -1,7 +1,7 @@
 import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
+import axios from 'axios';
 import { User } from '../types/userContextType';
 
-// Define the context type
 interface UserContextType {
   user: User | null;
   isAuthenticated: boolean;
@@ -10,7 +10,6 @@ interface UserContextType {
   setUserData: (userData: { user: User | null; token: string | null; isAuthenticated: boolean }) => void;
 }
 
-// Create the context
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
 interface UserProviderProps {
@@ -22,18 +21,41 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(!!token);
 
-  // Update isAuthenticated whenever token changes
+  // When token changes, update isAuthenticated and fetch user data if token exists.
   useEffect(() => {
     setIsAuthenticated(!!token);
+    if (token) {
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
+      axios
+        .get(`${backendUrl}/api/v1/user/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        .then((response) => {
+          if (response.data.status === 'success') {
+            setUser(response.data.user);
+          } else {
+            setUser(null);
+          }
+        })
+        .catch((error) => {
+          console.error("Error fetching user info:", error);
+          // If fetching fails (e.g., token is invalid), remove the token.
+          localStorage.removeItem('token');
+          setToken(null);
+          setUser(null);
+        });
+    } else {
+      setUser(null);
+    }
   }, [token]);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
     setUser(null);
     setToken(null);
+    setIsAuthenticated(false);
   };
 
-  // Updated setUserData to accept three properties in an object
   const setUserData = ({
     user,
     token,
@@ -45,19 +67,17 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   }) => {
     setUser(user);
     setToken(token);
-    // You can optionally update isAuthenticated directly here:
-    // setIsAuthenticated(isAuthenticated);
+    setIsAuthenticated(isAuthenticated);
     localStorage.setItem('token', token || '');
   };
 
   return (
-    <UserContext.Provider value={{ user, setUserData, isAuthenticated, token, logout: handleLogout }}>
+    <UserContext.Provider value={{ user, isAuthenticated, token, logout: handleLogout, setUserData }}>
       {children}
     </UserContext.Provider>
   );
 };
 
-// Custom hook to consume the user context
 export const useUserContext = () => {
   const context = useContext(UserContext);
   if (!context) {

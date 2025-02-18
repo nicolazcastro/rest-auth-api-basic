@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { login, registerUser } from '../services/userServices';
 import { isValidEmail } from '../utils/validation';
 import { useUserContext } from '../context/UserContext';
+import GoogleLoginButton from './GoogleLoginButton';
 import { User } from '../types/userContextType';
 
 interface LoginModalProps {
@@ -211,6 +212,9 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose }) => {
             {successMessage && (
               <div className="alert alert-success mt-3">{successMessage}</div>
             )}
+          </div>
+          <div className="mt-3 text-center">
+            <GoogleLoginButton />
           </div>
           <div className="modal-footer">
             <button type="button" className="btn btn-secondary" onClick={onClose}>
