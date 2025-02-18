@@ -1,4 +1,3 @@
-// backend/src/config/passport.ts
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import * as userServices from '../services/users/usersServices';

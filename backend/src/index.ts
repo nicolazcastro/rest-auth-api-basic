@@ -12,12 +12,11 @@ import { generateToken } from './utils/jwt.utils';
 import { TokenPayload } from './types/types';
 import { AccessTypes } from './models/enums';
 
-
 const app = express();
 app.use(express.json());
 app.use(cors());
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 if (process.env.NODE_ENV !== 'production') {
   const userTypes = Object.values(AccessTypes) as any[];
@@ -35,9 +34,7 @@ app.get('/ping', (_req, res) => {
   res.send('pong');
 });
 
-// Mount your existing user routes
 app.use('/api/v1/user', userRouter);
-// Mount the Google auth routes under /api/v1/auth
 app.use('/api/v1/auth', googleAuthRoutes);
 
 app.listen(PORT, () => {
