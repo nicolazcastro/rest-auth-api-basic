@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { login, registerUser } from '../services/userServices';
 import { isValidEmail } from '../utils/validation';
 import { useUserContext } from '../context/UserContext';
@@ -50,23 +51,21 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose }) => {
       onClose(); // Close modal upon successful login
     } catch (error: any) {
       console.error('Error logging in:', error);
-      // Check for error details from the API
       if (error.response && error.response.data) {
         if (error.response.data.errors) {
-          // Display each error message returned from the API
           setErrors(error.response.data.errors);
         } else if (error.response.data.message) {
           setErrors([error.response.data.message]);
         } else {
-          setErrors(['Error registering', error.message || 'Unknown error']);
+          setErrors(['Error logging in', error.message || 'Unknown error']);
         }
       } else {
-        setErrors(['Error registering', error.message || 'Unknown error']);
+        setErrors(['Error logging in', error.message || 'Unknown error']);
       }
     }
   };
 
-  // Handler for registration with auto-login on success
+  // Handler for registration with auto-login on success if immediate, or display a message if email confirmation is required.
   const handleRegister = async () => {
     setErrors([]);
     setSuccessMessage('');
@@ -83,22 +82,26 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose }) => {
       return;
     }
     try {
-      // Call the registerUser service. It is assumed that the API returns an object with status, token, and user.
       const response = await registerUser(name, email, password);
-      if (response.status === 'success' && response.token) {
-        // Automatically update context and log in the user
-        setUserData({ user: response.user, token: response.token, isAuthenticated: true });
-        localStorage.setItem('token', response.token);
-        onClose(); // Close modal automatically upon successful registration
+      if (response.status === 'success') {
+        // If the API returns a token, then immediate login is enabled.
+        if (response.token) {
+          setUserData({ user: response.user, token: response.token, isAuthenticated: true });
+          localStorage.setItem('token', response.token);
+          onClose();
+        } else if (response.emailConfirmationEnabled) {
+          // Email confirmation is enabled, so just display the success message.
+          setSuccessMessage(response.message || 'Registration successful. Please check your email to confirm your account.');
+        } else {
+          setErrors(['Registration failed.']);
+        }
       } else {
         setErrors(['Registration failed.']);
       }
     } catch (error: any) {
       console.error('Error registering:', error);
-      // Check for error details from the API
       if (error.response && error.response.data) {
         if (error.response.data.errors) {
-          // Display each error message returned from the API
           setErrors(error.response.data.errors);
         } else if (error.response.data.message) {
           setErrors([error.response.data.message]);
@@ -120,7 +123,6 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose }) => {
             <button type="button" className="btn-close" aria-label="Close" onClick={onClose}></button>
           </div>
           <div className="modal-body">
-            {/* Tab buttons */}
             <div className="d-flex mb-3">
               <button
                 className={`btn me-2 ${activeTab === 'login' ? 'btn-primary' : 'btn-outline-primary'}`}
@@ -143,7 +145,6 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose }) => {
                 Register
               </button>
             </div>
-            {/* Form fields */}
             {activeTab === 'login' && (
               <>
                 <input
@@ -200,7 +201,6 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose }) => {
                 </button>
               </>
             )}
-            {/* Display error messages */}
             {errors.length > 0 && (
               <div className="alert alert-danger mt-3">
                 {errors.map((error, index) => (
@@ -208,10 +208,14 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose }) => {
                 ))}
               </div>
             )}
-            {/* Display success message */}
             {successMessage && (
               <div className="alert alert-success mt-3">{successMessage}</div>
             )}
+          </div>
+          <div className="modal-footer">
+            <Link to="/forgot-password" onClick={onClose}>
+              Forgot Password?
+            </Link>
           </div>
           <div className="mt-3 text-center">
             <GoogleLoginButton />

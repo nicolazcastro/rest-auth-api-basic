@@ -8,6 +8,7 @@ import express from 'express';
 import cors from 'cors';
 import userRouter from './routes/users';
 import googleAuthRoutes from './routes/googleAuth';
+import authRouter from './routes/auth';
 import { generateToken } from './utils/jwt.utils';
 import { TokenPayload } from './types/types';
 import { AccessTypes } from './models/enums';
@@ -36,6 +37,7 @@ app.get('/ping', (_req, res) => {
 
 app.use('/api/v1/user', userRouter);
 app.use('/api/v1/auth', googleAuthRoutes);
+app.use('/api/v1/auth', authRouter);
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

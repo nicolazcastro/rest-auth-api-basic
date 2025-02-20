@@ -1,24 +1,45 @@
-import { Schema, Document } from 'mongoose'
+import mongoose, { Schema, Document } from 'mongoose';
 
-export interface IUser extends Document{
-  name: string
-  email: string
-  enabled: boolean
-  profile: string
-  password: string
-  token: string
-  userId: number
+export interface IUser extends Document {
+  name: string;
+  email: string;
+  userId: number;
+  password: string;
+  profile: string;
+  emailConfirmed: boolean;
+  emailConfirmationToken?: string;
+  emailConfirmationExpires?: Date;
+  accessTypes?: string[];
+  passwordResetToken?: string;
+  passwordResetExpires?: Date;
 }
 
-export const UserSchema: Schema = new Schema({
+export interface INewUserEntry {
+  name: string;
+  email: string;
+  userId: number;
+  password: string;
+  profile: string;
+  emailConfirmed?: boolean;
+  emailConfirmationToken?: string;
+  emailConfirmationExpires?: Date;
+  accessTypes?: string[];
+  passwordResetToken?: string;
+  passwordResetExpires?: string;
+}
+
+const userSchema: Schema = new Schema({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
-  enabled: { type: Boolean, required: true },
-  profile: { type: String, required: true },
+  userId: { type: Number, required: true },
   password: { type: String, required: true },
-  token: { type: String, required: false },
-  userId: { type: Number, required: true, unique: true }
-})
+  profile: { type: String, required: true },
+  emailConfirmed: { type: Boolean, default: false },
+  emailConfirmationToken: { type: String },
+  emailConfirmationExpires: { type: Date },
+  accessTypes: { type: [String], default: [] },
+  passwordResetToken: { type: String },
+  passwordResetExpires: { type: Date },
+});
 
-export interface INewUserEntry extends Omit<IUser, 'id'>{}
-export type NewUserEntry = Omit<IUser, 'id'>
+export default mongoose.model<IUser>('User', userSchema);
