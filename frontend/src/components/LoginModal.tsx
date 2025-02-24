@@ -1,3 +1,4 @@
+// frontend/src/components/LoginModal.tsx
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { login, registerUser } from '../services/userServices';
@@ -42,12 +43,20 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose }) => {
       return;
     }
     try {
-      // Define a callback to update the context after successful login
-      const loginHandler = (data: { user: User | null; token: string | null; isAuthenticated: boolean }) => {
+      // Define the callback with the updated type:
+      const loginHandler = (data: {
+        user: User | null;
+        accessToken: string | null;
+        refreshToken: string | null;
+        isAuthenticated: boolean;
+      }) => {
+        // Update context with both tokens
         setUserData(data);
       };
-      const token = await login(email, password, loginHandler);
-      localStorage.setItem('token', token);
+
+      // The login function now returns an object with tokens
+      const tokenResponse = await login(email, password, loginHandler);
+      // No need to manually store tokens here if login() already handles it.
       onClose(); // Close modal upon successful login
     } catch (error: any) {
       console.error('Error logging in:', error);
@@ -84,14 +93,24 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose }) => {
     try {
       const response = await registerUser(name, email, password);
       if (response.status === 'success') {
-        // If the API returns a token, then immediate login is enabled.
+        // If the API returns tokens, then immediate login is enabled.
         if (response.token) {
-          setUserData({ user: response.user, token: response.token, isAuthenticated: true });
-          localStorage.setItem('token', response.token);
+          // Here, update context with both tokens (assuming response.token is now replaced by response.tokens)
+          setUserData({
+            user: response.user,
+            accessToken: response.token.accessToken,
+            refreshToken: response.token.refreshToken,
+            isAuthenticated: true
+          });
+          localStorage.setItem('accessToken', response.token.accessToken);
+          localStorage.setItem('refreshToken', response.token.refreshToken);
           onClose();
         } else if (response.emailConfirmationEnabled) {
           // Email confirmation is enabled, so just display the success message.
-          setSuccessMessage(response.message || 'Registration successful. Please check your email to confirm your account.');
+          setSuccessMessage(
+            response.message ||
+              'Registration successful. Please check your email to confirm your account.'
+          );
         } else {
           setErrors(['Registration failed.']);
         }
@@ -145,62 +164,76 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose }) => {
                 Register
               </button>
             </div>
-            {activeTab === 'login' && (
-              <>
-                <input
-                  type="email"
-                  className="form-control mb-2"
-                  placeholder="Email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-                <input
-                  type="password"
-                  className="form-control mb-2"
-                  placeholder="Password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-                <button type="button" className="btn btn-primary" onClick={handleLogin}>
-                  Login
-                </button>
-              </>
-            )}
-            {activeTab === 'register' && (
-              <>
-                <input
-                  type="text"
-                  className="form-control mb-2"
-                  placeholder="Name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
-                <input
-                  type="email"
-                  className="form-control mb-2"
-                  placeholder="Email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-                <input
-                  type="password"
-                  className="form-control mb-2"
-                  placeholder="Password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-                <input
-                  type="password"
-                  className="form-control mb-2"
-                  placeholder="Confirm Password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                />
-                <button type="button" className="btn btn-primary" onClick={handleRegister}>
-                  Register
-                </button>
-              </>
-            )}
+            <div 
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  // Prevent form submission if inside a form element
+                  e.preventDefault();
+                  if (activeTab === 'login') {
+                    handleLogin();
+                  } else if (activeTab === 'register') {
+                    handleRegister();
+                  }
+                }
+              }}
+            >
+              {activeTab === 'login' && (
+                <>
+                  <input
+                    type="email"
+                    className="form-control mb-2"
+                    placeholder="Email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                  <input
+                    type="password"
+                    className="form-control mb-2"
+                    placeholder="Password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                  <button type="button" className="btn btn-primary" onClick={handleLogin}>
+                    Login
+                  </button>
+                </>
+              )}
+              {activeTab === 'register' && (
+                <>
+                  <input
+                    type="text"
+                    className="form-control mb-2"
+                    placeholder="Name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                  <input
+                    type="email"
+                    className="form-control mb-2"
+                    placeholder="Email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                  <input
+                    type="password"
+                    className="form-control mb-2"
+                    placeholder="Password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                  <input
+                    type="password"
+                    className="form-control mb-2"
+                    placeholder="Confirm Password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
+                  <button type="button" className="btn btn-primary" onClick={handleRegister}>
+                    Register
+                  </button>
+                </>
+              )}
+            </div>
             {errors.length > 0 && (
               <div className="alert alert-danger mt-3">
                 {errors.map((error, index) => (

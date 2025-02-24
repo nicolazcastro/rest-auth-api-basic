@@ -1,34 +1,56 @@
-import { sign, SignOptions, verify, VerifyOptions, decode } from 'jsonwebtoken'
-import dotenv from 'dotenv'
-import { TokenPayload } from '../types/types'
+import { sign, verify, decode } from 'jsonwebtoken';
+import dotenv from 'dotenv';
+import { TokenPayload } from '../types/authTypes';
 
-dotenv.config()
+dotenv.config();
 
-const secretKey: string = process.env.JWT_SECRET as string 
+const JWT_SECRET: string = process.env.JWT_SECRET as string;
+const JWT_EXPIRES_IN: string = process.env.JWT_EXPIRES_IN || '1d';
 
-const signInOptions: SignOptions = {
-  algorithm: 'HS256',
-  expiresIn: '365d'
-}
+const REFRESH_TOKEN_SECRET: string = process.env.REFRESH_TOKEN_SECRET as string;
+const REFRESH_TOKEN_EXPIRES_IN: string = process.env.REFRESH_TOKEN_EXPIRES_IN || '7d';
 
+/**
+ * Decodes a JWT token without verifying its signature.
+ */
 export function decodeToken(token: string): any {
-  return decode(token)
+  return decode(token);
 }
 
-export function generateToken(payload: any): string {
-  return sign(payload, secretKey, signInOptions) // Usa solo la clave secreta
+/**
+ * Generates an access token using JWT_SECRET and the expiration time.
+ */
+export function generateToken(payload: TokenPayload): string {
+  return sign(payload, JWT_SECRET, { algorithm: 'HS256', expiresIn: JWT_EXPIRES_IN });
 }
 
+/**
+ * Validates an access token and returns the decoded payload.
+ */
 export async function validateToken(token: string): Promise<TokenPayload> {
-  const verifyOptions: VerifyOptions = {
-    algorithms: ['HS256'],
-    maxAge: '1d'
-  }
+  return new Promise((resolve, reject) => {
+    verify(token, JWT_SECRET, { algorithms: ['HS256'], maxAge: JWT_EXPIRES_IN }, (error, decoded) => {
+      if (error) return reject(error);
+      resolve(decoded as TokenPayload);
+    });
+  });
+}
 
-  return await new Promise((resolve, reject) => {
-    verify(token, secretKey, verifyOptions, (error: any, decoded: any) => {
-      if (error) return reject(error)
-      resolve(decoded as TokenPayload)
-    })
-  })
+/**
+ * Generates a refresh token using a different secret and expiration time.
+ */
+export function generateRefreshToken(payload: TokenPayload): string {
+  return sign(payload, REFRESH_TOKEN_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRES_IN });
+}
+
+/**
+ * Validates a refresh token and returns the decoded payload.
+ */
+export async function validateRefreshToken(token: string): Promise<TokenPayload> {
+  return new Promise((resolve, reject) => {
+    verify(token, REFRESH_TOKEN_SECRET, (err, decoded) => {
+      if (err) return reject(err);
+      resolve(decoded as TokenPayload);
+    });
+  });
 }

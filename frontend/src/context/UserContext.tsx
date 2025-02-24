@@ -1,13 +1,20 @@
 import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
-import axios from 'axios';
+import apiClient from '../services/apiClient'; // Our Axios client that handles token refresh automatically.
 import { User } from '../types/userContextType';
+import { getStoredTokens, clearStoredTokens } from '../utils/tokenStorage';
 
 interface UserContextType {
   user: User | null;
   isAuthenticated: boolean;
-  token: string | null;
+  accessToken: string | null;
+  refreshToken: string | null;
   logout: () => void;
-  setUserData: (userData: { user: User | null; token: string | null; isAuthenticated: boolean }) => void;
+  setUserData: (data: { 
+    user: User | null; 
+    accessToken: string | null; 
+    refreshToken: string | null; 
+    isAuthenticated: boolean 
+  }) => void;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -17,18 +24,21 @@ interface UserProviderProps {
 }
 
 export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
+  // Retrieve stored tokens from localStorage using tokenStorage.ts
+  const storedTokens = getStoredTokens();
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(!!token);
+  const [accessToken, setAccessToken] = useState<string | null>(storedTokens.accessToken);
+  const [refreshToken, setRefreshToken] = useState<string | null>(storedTokens.refreshToken);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(!!storedTokens.accessToken);
 
-  // When token changes, update isAuthenticated and fetch user data if token exists.
+  // When the access token changes, update authentication status and fetch user info.
   useEffect(() => {
-    setIsAuthenticated(!!token);
-    if (token) {
+    setIsAuthenticated(!!accessToken);
+    if (accessToken) {
       const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
-      axios
+      apiClient
         .get(`${backendUrl}/api/v1/user/me`, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${accessToken}` },
         })
         .then((response) => {
           if (response.data.status === 'success') {
@@ -39,40 +49,50 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
         })
         .catch((error) => {
           console.error("Error fetching user info:", error);
-          // If fetching fails (e.g., token is invalid), remove the token.
-          localStorage.removeItem('token');
-          setToken(null);
+          // If fetching fails (e.g., token invalid), clear stored tokens and reset state.
+          clearStoredTokens();
+          setAccessToken(null);
+          setRefreshToken(null);
           setUser(null);
         });
     } else {
       setUser(null);
     }
-  }, [token]);
+  }, [accessToken]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
+  // Logout function: clears both tokens and resets user state.
+  const logout = () => {
+    clearStoredTokens();
     setUser(null);
-    setToken(null);
+    setAccessToken(null);
+    setRefreshToken(null);
     setIsAuthenticated(false);
   };
 
+  // setUserData updates context state and stores tokens in localStorage.
   const setUserData = ({
     user,
-    token,
+    accessToken,
+    refreshToken,
     isAuthenticated,
   }: {
     user: User | null;
-    token: string | null;
+    accessToken: string | null;
+    refreshToken: string | null;
     isAuthenticated: boolean;
   }) => {
     setUser(user);
-    setToken(token);
+    setAccessToken(accessToken);
+    setRefreshToken(refreshToken);
     setIsAuthenticated(isAuthenticated);
-    localStorage.setItem('token', token || '');
+    if (accessToken && refreshToken) {
+      localStorage.setItem('accessToken', accessToken);
+      localStorage.setItem('refreshToken', refreshToken);
+    }
   };
 
   return (
-    <UserContext.Provider value={{ user, isAuthenticated, token, logout: handleLogout, setUserData }}>
+    <UserContext.Provider value={{ user, isAuthenticated, accessToken, refreshToken, logout, setUserData }}>
       {children}
     </UserContext.Provider>
   );

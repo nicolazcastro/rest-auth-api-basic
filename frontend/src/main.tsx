@@ -5,6 +5,7 @@ import 'bootstrap/dist/js/bootstrap.bundle.min.js';
 import "./assets/css/styles.css";
 import App from "./App";
 import { UserProvider } from "./context/UserContext";
+import { storeTokens } from "./utils/tokenStorage";
 
 // Helper function to extract token from URL query parameters
 function extractTokenFromUrl(): string | null {
@@ -23,7 +24,7 @@ function extractTokenFromUrl(): string | null {
 
 const tokenFromUrl = extractTokenFromUrl();
 if (tokenFromUrl) {
-  localStorage.setItem('token', tokenFromUrl);
+  storeTokens(tokenFromUrl, "");
 }
 
 const rootElement = document.getElementById("root");

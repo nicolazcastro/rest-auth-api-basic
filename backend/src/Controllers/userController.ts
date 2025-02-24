@@ -1,6 +1,6 @@
 import * as userServices from '../services/users/usersServices';
 import { Request, Response } from 'express';
-import { decodeToken, generateToken } from '../utils/jwt.utils';
+import { decodeToken, validateRefreshToken } from '../utils/jwt.utils';
 import { validateUserData } from '../utils/validation';
 import { sendEmail } from '../services/common/emailService';
 import crypto from 'crypto';
@@ -8,9 +8,7 @@ import crypto from 'crypto';
 /**
  * Registration endpoint.
  * - If ENABLE_EMAIL_CONFIRMATION is "1", registers the user with emailConfirmed=false,
- *   generates a temporary confirmation token (stored in emailConfirmationToken and emailConfirmationExpires),
- *   sends a confirmation email with a link using the query parameter "confirm-token",
- *   and returns a message. If the token is not generated, abort registration.
+ *   generates a confirmation token, sends a confirmation email, and returns a message.
  * - Otherwise, sets emailConfirmed=true and logs in the user immediately.
  */
 export async function register(req: Request, res: Response): Promise<Response> {
@@ -29,30 +27,23 @@ export async function register(req: Request, res: Response): Promise<Response> {
       req.body.userId = await userServices.getNextUserId();
     }
     
-    // Set emailConfirmed flag based on feature flag.
     req.body.emailConfirmed = process.env.ENABLE_EMAIL_CONFIRMATION === "1" ? false : true;
     let emailConfirmationEnabled = false;
     
-    // If email confirmation is enabled, generate a temporary confirmation token.
     if (process.env.ENABLE_EMAIL_CONFIRMATION === "1") {
       const token = crypto.randomBytes(20).toString('hex');
       if (!token) {
-        // If token generation fails, abort registration.
         return res.status(500).json({ status: "error", message: "Failed to generate confirmation token." });
       }
       const expires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
       emailConfirmationEnabled = true;
       req.body.emailConfirmationToken = token;
       req.body.emailConfirmationExpires = expires;
-      console.log(token);
-      console.log(expires);
     }
     
     const newUser = await userServices.register(req.body);
-    console.log(newUser);
     
     if (process.env.ENABLE_EMAIL_CONFIRMATION === "1") {
-      // Build confirmation link with query parameter "confirm-token"
       const confirmationLink = `${process.env.FRONTEND_BASE_URL}/confirm-email?confirm-token=${newUser.emailConfirmationToken}`;
       
       await sendEmail({
@@ -69,13 +60,12 @@ export async function register(req: Request, res: Response): Promise<Response> {
         message: "Registration successful. Please check your email to confirm your account."
       });
     } else {
-      const token = generateToken({
-        name: newUser.name,
-        email: newUser.email,
-        userId: newUser.userId,
-        accessTypes: newUser.accessTypes || []
-      });
-      return res.status(201).json({ status: "success", token, user: newUser });
+      // For immediate login, generate both tokens.
+      const tokenResponse = {
+        accessToken: userServices.generateUserToken(userServices.extractAuthUser(newUser)),
+        refreshToken: userServices.generateUserRefreshToken(userServices.extractAuthUser(newUser))
+      };
+      return res.status(201).json({ status: "success", tokens: tokenResponse, user: newUser });
     }
   } catch (error: any) {
     console.error("Registration/email error:", error);
@@ -94,10 +84,7 @@ export async function register(req: Request, res: Response): Promise<Response> {
 
 /**
  * Email confirmation endpoint.
- * - Extracts the token from the query parameter "confirm-token".
- * - Finds the user by emailConfirmationToken (and checks that emailConfirmationExpires is in the future).
- * - Updates the user record by setting emailConfirmed to true and clearing the token fields.
- * - Returns a JWT token to log the user in.
+ * Confirms the user's email and returns a login token along with both tokens.
  */
 export async function confirmEmail(req: Request, res: Response): Promise<Response> {
   try {
@@ -113,8 +100,11 @@ export async function confirmEmail(req: Request, res: Response): Promise<Respons
     if (!updatedUser) {
       return res.status(404).json({ status: "error", message: "User not found." });
     }
-    const loginToken = userServices.generateUserToken(updatedUser);
-    return res.status(200).json({ status: "success", token: loginToken, user: updatedUser });
+    const tokenResponse = {
+      accessToken: userServices.generateUserToken(userServices.extractAuthUser(updatedUser)),
+      refreshToken: userServices.generateUserRefreshToken(userServices.extractAuthUser(updatedUser))
+    };
+    return res.status(200).json({ status: "success", tokens: tokenResponse, user: updatedUser });
   } catch (error: any) {
     console.error("Email confirmation error:", error);
     return res.status(500).json({ status: "error", message: "Email confirmation failed." });
@@ -123,8 +113,7 @@ export async function confirmEmail(req: Request, res: Response): Promise<Respons
 
 /**
  * Forgot password endpoint.
- * - Generates a temporary password reset token (stored in passwordResetToken and passwordResetExpires).
- * - Sends a reset link with query parameter "password-reset-token".
+ * Generates a password reset token and sends a reset email.
  */
 export async function forgotPassword(req: Request, res: Response): Promise<Response> {
   try {
@@ -142,7 +131,6 @@ export async function forgotPassword(req: Request, res: Response): Promise<Respo
     }
     const resetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
     await userServices.setPasswordResetToken(email, resetToken, resetExpires);
-    // Build reset link using query parameter "password-reset-token"
     const resetLink = `${process.env.FRONTEND_BASE_URL}/reset-password?password-reset-token=${resetToken}`;
     
     await sendEmail({
@@ -161,10 +149,7 @@ export async function forgotPassword(req: Request, res: Response): Promise<Respo
 
 /**
  * Reset password endpoint.
- * - Accepts a temporary reset token via the POST body property "passwordResetToken" and a new password.
- * - Verifies the token and its expiration.
- * - Updates the user's password (after hashing) and clears the reset token fields.
- * - Returns a JWT token to log the user in.
+ * Resets the user's password and returns a login token along with both tokens.
  */
 export async function resetPassword(req: Request, res: Response): Promise<Response> {
   try {
@@ -180,8 +165,11 @@ export async function resetPassword(req: Request, res: Response): Promise<Respon
     if (!updatedUser) {
       return res.status(404).json({ status: "error", message: "User not found." });
     }
-    const loginToken = userServices.generateUserToken(updatedUser);
-    return res.status(200).json({ status: "success", token: loginToken, user: updatedUser });
+    const tokenResponse = {
+      accessToken: userServices.generateUserToken(userServices.extractAuthUser(updatedUser)),
+      refreshToken: userServices.generateUserRefreshToken(userServices.extractAuthUser(updatedUser))
+    };
+    return res.status(200).json({ status: "success", tokens: tokenResponse, user: updatedUser });
   } catch (error: any) {
     console.error("Reset password error:", error);
     return res.status(500).json({ status: "error", message: "Reset password failed." });
@@ -189,7 +177,8 @@ export async function resetPassword(req: Request, res: Response): Promise<Respon
 }
 
 /**
- * Handles user login with validation.
+ * Login endpoint.
+ * Validates credentials and returns a login token along with user data and both tokens.
  */
 export async function login(req: Request, res: Response): Promise<Response> {
   try {
@@ -197,13 +186,14 @@ export async function login(req: Request, res: Response): Promise<Response> {
       return res.status(400).json({ status: "error", message: "Email and password are required" });
     }
 
-    const token = await userServices.login(req.body.email, req.body.password);
-    if (!token) {
+    const tokenResponse = await userServices.login(req.body.email, req.body.password);
+    if (!tokenResponse) {
       return res.status(401).json({ status: "error", message: "Invalid credentials" });
     }
 
-    const decodedToken = decodeToken(token);
-    return res.json({ status: "success", token, user: decodedToken });
+    // Decode the access token to return user data (if needed)
+    const decodedToken = decodeToken(tokenResponse.accessToken);
+    return res.json({ status: "success", tokens: tokenResponse, user: decodedToken });
   } catch (error: any) {
     console.error(error);
     return res.status(500).json({ status: "error", message: "Internal server error" });
@@ -211,7 +201,7 @@ export async function login(req: Request, res: Response): Promise<Response> {
 }
 
 /**
- * Handles fetching authenticated user information.
+ * Endpoint to get authenticated user info.
  */
 export async function me(req: Request, res: Response): Promise<Response> {
   try {
@@ -222,7 +212,7 @@ export async function me(req: Request, res: Response): Promise<Response> {
 
     const decodedToken = decodeToken(token);
     if (typeof decodedToken.userId === 'number') {
-      const user = await userServices.findMeByUserId(decodedToken.userId);
+      const user = await userServices.findMeByUserId(decodedToken.userId.toString());
       if (!user) {
         return res.status(404).json({ status: "error", message: "User not found" });
       }
@@ -237,14 +227,53 @@ export async function me(req: Request, res: Response): Promise<Response> {
 }
 
 /**
- * Fetch all users.
+ * Endpoint to get all users.
  */
-export async function getUsers(_req: Request, res: Response): Promise<Response> {
+export async function getUsers(req: Request, res: Response): Promise<Response> {
   try {
     const users = await userServices.getUsers();
-    return users ? res.json({ status: "success", users }) : res.status(404).json({ status: "error", message: "No users found" });
+    return users && users.length > 0
+      ? res.json({ status: "success", users })
+      : res.status(404).json({ status: "error", message: "No users found" });
   } catch (error: any) {
     console.error(error);
     return res.status(500).json({ status: "error", message: "Internal server error" });
+  }
+}
+
+/**
+ * Refresh token endpoint.
+ * Receives a refresh token and, if valid, issues a new access token and refresh token.
+ */
+export async function refreshToken(req: Request, res: Response): Promise<Response> {
+  try {
+    const { refreshToken } = req.body;
+    if (!refreshToken) {
+      return res.status(400).json({ status: "error", message: "Refresh token is required" });
+    }
+
+    const decoded = await validateRefreshToken(refreshToken);
+
+    // The decoded token should already contain the authentication fields.
+    const userForToken = {
+      name: decoded.name,
+      email: decoded.email,
+      userId: decoded.userId,
+      accessTypes: decoded.accessTypes || []
+    };
+
+    const newAccessToken = userServices.generateUserToken(userForToken);
+    const newRefreshToken = userServices.generateUserRefreshToken(userForToken);
+
+    return res.status(200).json({
+      status: "success",
+      tokens: {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken
+      }
+    });
+  } catch (error: any) {
+    console.error("Refresh token error:", error);
+    return res.status(401).json({ status: "error", message: "Invalid refresh token", error: error.message });
   }
 }

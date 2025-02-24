@@ -2,10 +2,15 @@ import { IUser, INewUserEntry } from '../../models/user';
 import bcrypt from 'bcrypt';
 import * as db from '../../db/db';
 import User from '../../models/user';
-import { TokenPayload } from '../../types/types';
-import { generateToken } from '../../utils/jwt.utils';
+import { TokenPayload, IAuthUser, TokenResponse } from '../../types/authTypes';
+import { generateToken, generateRefreshToken } from '../../utils/jwt.utils';
 import { AccessTypes, AdminAccessTypes } from '../../models/enums';
 
+/**
+ * Registers a new user.
+ * @param parsedUserEntry - The new user entry data.
+ * @returns The saved user.
+ */
 export async function register(parsedUserEntry: INewUserEntry): Promise<IUser> {
   await db.connectDb();
   const salt = await bcrypt.genSalt(6);
@@ -27,7 +32,6 @@ export async function register(parsedUserEntry: INewUserEntry): Promise<IUser> {
 
 export async function confirmEmail(email: string): Promise<IUser | null> {
   await db.connectDb();
-  // Clear the confirmation token fields upon confirming email.
   return User.findOneAndUpdate(
     { email },
     { emailConfirmed: true, emailConfirmationToken: undefined, emailConfirmationExpires: undefined },
@@ -71,42 +75,81 @@ export async function resetPassword(email: string, newPassword: string): Promise
   );
 }
 
-export async function getUsers(): Promise<IUser[] | any> {
+export async function getUsers(): Promise<IUser[]> {
   await db.connectDb();
   return User.find().then((entries: IUser[] | null) => {
-    if (entries === null) {
-      return entries;
-    } else {
-      const objs: any[] = [];
-      for (const element of entries) {
-        objs.push(element);
-      }
-      return objs;
-    }
+    return entries || [];
   }).catch((e: any) => {
     console.log(e);
     throw new Error(e);
   });
 }
 
-export const getNextUserId = async (): Promise<number | any> => {
+export const getNextUserId = async (): Promise<number> => {
   await db.connectDb();
   return User.findOne().sort({ userId: -1 }).limit(1).then((entry: IUser | null) => {
-    if (entry == null) {
-      return 1;
-    } else {
-      const obj: Partial<IUser> = {
-        userId: entry.userId + 1
-      };
-      return obj.userId;
-    }
+    return entry == null ? 1 : entry.userId + 1;
   }).catch((e: any) => {
     console.log(e);
     throw new Error(e);
   });
 };
 
-export async function login(email: string, password: string): Promise<string | null> {
+/**
+ * Extracts the authentication-relevant fields from a full IUser object.
+ * @param user - The full user model.
+ * @returns An object conforming to IAuthUser.
+ */
+export function extractAuthUser(user: IUser): IAuthUser {
+  return {
+    name: user.name,
+    email: user.email,
+    userId: user.userId,
+    accessTypes: (user.accessTypes && user.accessTypes.length > 0)
+      ? user.accessTypes
+      : (user.profile === 'admin'
+          ? Object.values(AdminAccessTypes) as string[]
+          : Object.values(AccessTypes) as string[])
+  };
+}
+
+/**
+ * Generates a JWT access token for a user.
+ * @param authUser - The authentication user data.
+ * @returns A signed access token as a string.
+ */
+export function generateUserToken(authUser: IAuthUser): string {
+  const payload: TokenPayload = {
+    name: authUser.name,
+    email: authUser.email,
+    userId: authUser.userId,
+    accessTypes: authUser.accessTypes
+  };
+  return generateToken(payload);
+}
+
+/**
+ * Generates a JWT refresh token for a user.
+ * @param authUser - The authentication user data.
+ * @returns A signed refresh token as a string.
+ */
+export function generateUserRefreshToken(authUser: IAuthUser): string {
+  const payload: TokenPayload = {
+    name: authUser.name,
+    email: authUser.email,
+    userId: authUser.userId,
+    accessTypes: authUser.accessTypes
+  };
+  return generateRefreshToken(payload);
+}
+
+/**
+ * Logs in a user by verifying credentials and returning both tokens.
+ * @param email - The user's email.
+ * @param password - The user's password.
+ * @returns An object containing the access and refresh tokens, or null if invalid.
+ */
+export async function login(email: string, password: string): Promise<TokenResponse | null> {
   try {
     if (email.length > 0 && password.length > 0) {
       await db.connectDb();
@@ -116,27 +159,29 @@ export async function login(email: string, password: string): Promise<string | n
         }
         const passMatch = await bcrypt.compare(password, user.password);
         if (user && passMatch) {
-          // Use centralized token generation.
-          return generateUserToken(user);
+          const authUser = extractAuthUser(user);
+          const accessToken = generateUserToken(authUser);
+          const refreshToken = generateUserRefreshToken(authUser);
+          return { accessToken, refreshToken };
         } else {
-          console.log('password invalid for: ' + email);
+          console.log('Password invalid for: ' + email);
           return null;
         }
       }).catch((e: any) => {
-        console.log('user not found', e);
+        console.log('User not found', e);
         throw new Error(e);
       });
     } else {
-      console.log('Invalid Data');
+      console.log('Invalid data');
       return null;
     }
   } catch (e: any) {
-    console.log('error', e.message);
+    console.log('Error', e.message);
     return null;
   }
 }
 
-export async function findByUserId(userId: number): Promise<IUser | any> {
+export async function findByUserId(userId: number): Promise<IUser | null> {
   await db.connectDb();
   return User.findOne({ userId }).then((entry: IUser | null) => entry)
     .catch((e: any) => {
@@ -145,7 +190,7 @@ export async function findByUserId(userId: number): Promise<IUser | any> {
     });
 }
 
-export async function findByEmail(email: string): Promise<IUser | any> {
+export async function findByEmail(email: string): Promise<IUser | null> {
   await db.connectDb();
   return User.findOne({ email }).then((entry: IUser | null) => entry)
     .catch((e: any) => {
@@ -154,23 +199,25 @@ export async function findByEmail(email: string): Promise<IUser | any> {
     });
 }
 
-export async function findMeByUserId(userId: string): Promise<IUser | any> {
+export async function findMeByUserId(userId: string): Promise<Partial<IUser>> {
   await db.connectDb();
   return User.findOne({ userId }).then((entry: IUser | null) => {
-    const obj: Partial<IUser> = {
-      userId: entry?.userId,
-      name: entry?.name,
-      email: entry?.email,
-      profile: entry?.profile
-    };
-    return obj;
+    if (entry) {
+      return {
+        userId: entry.userId,
+        name: entry.name,
+        email: entry.email,
+        profile: entry.profile
+      };
+    }
+    return {};
   }).catch((e: any) => {
     console.log(e);
     throw new Error(e);
   });
 }
 
-export async function findById(id: string): Promise<IUser | any> {
+export async function findById(id: string): Promise<IUser | null> {
   await db.connectDb();
   return User.findById(id).then((entry: IUser | null) => entry)
     .catch((e: any) => {
@@ -181,28 +228,4 @@ export async function findById(id: string): Promise<IUser | any> {
 
 export async function setUserPassword(id: string, pass: string): Promise<void> {
   await User.findByIdAndUpdate(id, { password: pass });
-}
-
-/**
- * Centralized function to generate a JWT token for a user.
- */
-export function generateUserToken(user: IUser): string {
-  let accessTypes: string[] = [];
-  if (user.accessTypes && user.accessTypes.length > 0) {
-    accessTypes = user.accessTypes;
-  } else {
-    // If no accessTypes are set, assign defaults based on user profile.
-    if (user.profile === 'admin') {
-      accessTypes = Object.values(AdminAccessTypes) as any[];
-    } else {
-      accessTypes = Object.values(AccessTypes) as any[];
-    }
-  }
-  const payload: TokenPayload = {
-    name: user.name,
-    email: user.email,
-    userId: user.userId,
-    accessTypes: accessTypes
-  };
-  return generateToken(payload);
 }
